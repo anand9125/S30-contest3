@@ -1,0 +1,186 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+ 
+
+enum UserRole {
+  client
+  freelancer
+}
+
+enum PricingType {
+  fixed
+  hourly
+}
+
+enum ProjectStatus {
+  open
+  in_progress
+  completed
+  cancelled
+}
+
+enum ProposalStatus {
+  pending
+  accepted
+  rejected
+}
+
+enum ContractStatus {
+  active
+  completed
+  cancelled
+}
+
+enum MilestoneStatus {
+  pending
+  submitted
+  approved
+  rejected
+}
+
+model User {
+  id            String     @id @default(uuid())
+  name          String
+  email         String     @unique
+  password      String
+  role          UserRole
+  bio           String?
+  skills        Json       @default("[]")
+  hourlyRate    Decimal?   @db.Decimal(10, 2)
+  profileImage  String?
+  createdAt     DateTime   @default(now())
+
+  services      Service[]        @relation("FreelancerServices")
+  projects      Project[]        @relation("ClientProjects")
+  proposals     Proposal[]
+  contractsAsFreelancer Contract[] @relation("FreelancerContracts")
+  contractsAsClient     Contract[] @relation("ClientContracts")
+  reviewsGiven          Review[]   @relation("ReviewsGiven")
+  reviewsReceived       Review[]   @relation("ReviewsReceived")
+}
+
+model Service {
+  id            String       @id @default(uuid())
+  freelancerId  String
+  title         String
+  description   String
+  category      String
+  pricingType   PricingType
+  price         Decimal      @db.Decimal(10, 2)
+  deliveryDays  Int
+  rating        Decimal      @default(0.0) @db.Decimal(2, 1)
+  totalReviews  Int          @default(0)
+  createdAt     DateTime     @default(now())
+
+  freelancer    User         @relation("FreelancerServices", fields: [freelancerId], references: [id])
+
+  @@index([freelancerId])
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  clientId       String
+  title          String
+  description    String
+  category       String
+  budgetMin      Decimal       @db.Decimal(10, 2)
+  budgetMax      Decimal       @db.Decimal(10, 2)
+  deadline       DateTime
+  status         ProjectStatus @default(open)
+  requiredSkills Json          @default("[]")
+  createdAt      DateTime      @default(now())
+
+  client         User          @relation("ClientProjects", fields: [clientId], references: [id])
+  proposals      Proposal[]
+  contract       Contract?
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model Proposal {
+  id               String          @id @default(uuid())
+  projectId        String
+  freelancerId     String
+  coverLetter      String
+  proposedPrice    Decimal         @db.Decimal(10, 2)
+  estimatedDuration Int
+  status           ProposalStatus  @default(pending)
+  submittedAt      DateTime        @default(now())
+
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  freelancer       User            @relation(fields: [freelancerId], references: [id])
+
+  @@unique([projectId, freelancerId])
+  @@index([projectId])
+  @@index([freelancerId])
+}
+
+model Contract {
+  id            String          @id @default(uuid())
+  projectId     String          @unique
+  freelancerId  String
+  clientId      String
+  totalAmount   Decimal         @db.Decimal(10, 2)
+  status        ContractStatus  @default(active)
+  startedAt     DateTime        @default(now())
+  completedAt   DateTime?
+
+  // Relations
+  project       Project         @relation(fields: [projectId], references: [id])
+  freelancer    User            @relation("FreelancerContracts", fields: [freelancerId], references: [id])
+  client        User            @relation("ClientContracts", fields: [clientId], references: [id])
+  milestones    Milestone[]
+  reviews       Review[]
+
+  @@index([freelancerId])
+  @@index([clientId])
+}
+
+model Milestone {
+  id           String           @id @default(uuid())
+  contractId   String
+  title        String
+  description  String?
+  amount       Decimal          @db.Decimal(10, 2)
+  dueDate      DateTime
+  orderIndex   Int
+  status       MilestoneStatus  @default(pending)
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+
+  
+  contract     Contract         @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, orderIndex])
+  @@index([contractId])
+}
+
+model Review {
+  id           String    @id @default(uuid())
+  contractId   String
+  reviewerId   String
+  revieweeId   String
+  rating       Int
+  comment      String?
+  createdAt    DateTime  @default(now())
+
+  contract     Contract  @relation(fields: [contractId], references: [id])
+  reviewer     User      @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewee     User      @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+
+  @@unique([contractId, reviewerId])
+  @@index([contractId])
+}
